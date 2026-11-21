@@ -1,0 +1,1876 @@
+<!DOCTYPE html>
+<html lang="uk" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Scan3D Print — 3D-сканер об'єктів у реальних розмірах</title>
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background-color: #090d16;
+      color: #e2e8f0;
+      overscroll-behavior: none;
+    }
+    .font-mono-tech {
+      font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+    }
+    input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      height: 6px;
+      border-radius: 999px;
+      background: #1e293b;
+      outline: none;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #22d3ee;
+      border: 2px solid #0f172a;
+      cursor: pointer;
+      box-shadow: 0 0 0 2px rgba(34, 211, 238, 0.25);
+    }
+    input[type="range"]::-moz-range-thumb {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #22d3ee;
+      border: 2px solid #0f172a;
+      cursor: pointer;
+    }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #0f172a; }
+    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 999px; }
+    ::-webkit-scrollbar-thumb:hover { background: #475569; }
+    .cad-grid-bg {
+      background-image:
+        linear-gradient(rgba(34, 211, 238, 0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(34, 211, 238, 0.04) 1px, transparent 1px);
+      background-size: 24px 24px;
+    }
+    .touch-none-canvas { touch-action: none; }
+    @keyframes shutterFlash {
+      0% { opacity: 0.75; }
+      100% { opacity: 0; }
+    }
+    .animate-flash { animation: shutterFlash 220ms ease-out forwards; }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col overflow-x-hidden">
+  <!-- Top Header -->
+  <header class="sticky top-0 z-30 border-b border-slate-800/90 bg-slate-950/90 backdrop-blur-md">
+    <div class="max-w-7xl mx-auto px-3 sm:px-5 h-14 flex items-center justify-between gap-2">
+      <div class="flex items-center gap-2.5 min-w-0">
+        <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-400 to-blue-600 flex items-center justify-center shadow-lg shadow-cyan-500/20 shrink-0">
+          <i data-lucide="scan-line" class="w-4 h-4 text-slate-950 stroke-[2.5]"></i>
+        </div>
+        <div class="truncate">
+          <h1 class="text-sm sm:text-base font-bold tracking-tight text-white leading-tight truncate">Scan3D Print</h1>
+          <p class="text-[11px] text-slate-400 hidden sm:block leading-tight">Фото / Відео з камери → Масштаб 1:1 (мм) → 3D-друк STL</p>
+        </div>
+      </div>
+
+      <!-- Step Navigation -->
+      <nav class="flex items-center bg-slate-900/90 p-1 rounded-xl border border-slate-800" aria-label="Етапи сканування">
+        <button id="tab-capture" data-step="capture" class="step-tab flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-medium transition-all">
+          <i data-lucide="camera" class="w-3.5 h-3.5"></i>
+          <span class="hidden md:inline">1. Зйомка</span>
+          <span class="md:hidden">1</span>
+        </button>
+        <button id="tab-calibrate" data-step="calibrate" class="step-tab flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-medium transition-all">
+          <i data-lucide="ruler" class="w-3.5 h-3.5"></i>
+          <span class="hidden md:inline">2. Масштаб</span>
+          <span class="md:hidden">2</span>
+        </button>
+        <button id="tab-model" data-step="model" class="step-tab flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-medium transition-all">
+          <i data-lucide="box" class="w-3.5 h-3.5"></i>
+          <span class="hidden md:inline">3. 3D та друк</span>
+          <span class="md:hidden">3</span>
+        </button>
+      </nav>
+
+      <!-- Quick Export Button -->
+      <button id="header-export-stl" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 active:scale-95 text-slate-950 font-semibold text-xs transition-all shrink-0 shadow-md shadow-cyan-500/20">
+        <i data-lucide="download" class="w-3.5 h-3.5"></i>
+        <span class="hidden sm:inline">Експорт STL</span>
+        <span class="sm:hidden">STL</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Workspace -->
+  <main class="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-5 py-4 grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+    <!-- Left Sidebar Controls -->
+    <aside class="lg:col-span-4 flex flex-col gap-3 order-2 lg:order-1">
+
+      <!-- PANEL 1: CAPTURE CONTROLS -->
+      <section id="panel-capture" class="step-panel space-y-3">
+        <!-- Reconstruction Mode -->
+        <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 space-y-3">
+          <div class="flex items-center justify-between">
+            <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-400">Режим 3D-сканування</h2>
+            <span id="mode-badge" class="text-[11px] font-mono-tech px-2 py-0.5 rounded-full bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">360° Профіль</span>
+          </div>
+          <div class="grid grid-cols-3 gap-2">
+            <button data-mode="lathe" class="mode-btn flex flex-col items-center gap-1 p-2.5 rounded-xl border text-center transition-all">
+              <i data-lucide="cylinder" class="w-4 h-4"></i>
+              <span class="text-[11px] font-semibold leading-tight">Обертання</span>
+              <span class="text-[10px] text-slate-400 leading-tight">Вази, чашки</span>
+            </button>
+            <button data-mode="extrude" class="mode-btn flex flex-col items-center gap-1 p-2.5 rounded-xl border text-center transition-all">
+              <i data-lucide="layers" class="w-4 h-4"></i>
+              <span class="text-[11px] font-semibold leading-tight">Контур</span>
+              <span class="text-[10px] text-slate-400 leading-tight">Деталі, плоскі</span>
+            </button>
+            <button data-mode="multiview" class="mode-btn flex flex-col items-center gap-1 p-2.5 rounded-xl border text-center transition-all">
+              <i data-lucide="orbit" class="w-4 h-4"></i>
+              <span class="text-[11px] font-semibold leading-tight">Відео / 360°</span>
+              <span class="text-[10px] text-slate-400 leading-tight">2–12 ракурсів</span>
+            </button>
+          </div>
+          <p id="mode-hint" class="text-xs text-slate-400 leading-relaxed bg-slate-950/60 rounded-xl p-2.5 border border-slate-800/80">
+            Зробіть 1 чітке фото об'єкта збоку на однотонному фоні поруч із карткою або монетою для точного масштабу 1:1.
+          </p>
+        </div>
+
+        <!-- Camera, Photo & Video Source -->
+        <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 space-y-3">
+          <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-400">Камера, фото або відео</h2>
+          <button id="btn-start-camera" class="w-full flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs transition-all shadow-md shadow-cyan-500/20">
+            <i data-lucide="video" class="w-4 h-4"></i>
+            <span id="btn-camera-label">Увімкнути камеру телефону</span>
+          </button>
+
+          <div class="grid grid-cols-2 gap-2">
+            <label for="input-upload-photo" class="flex items-center justify-center gap-1.5 py-2.5 px-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-100 font-medium text-xs cursor-pointer transition-all border border-slate-700">
+              <i data-lucide="image-plus" class="w-4 h-4 text-cyan-400"></i>
+              <span>Фото з галереї</span>
+            </label>
+            <input id="input-upload-photo" type="file" accept="image/*" multiple class="hidden" />
+
+            <label for="input-upload-video" class="flex items-center justify-center gap-1.5 py-2.5 px-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-100 font-medium text-xs cursor-pointer transition-all border border-slate-700">
+              <i data-lucide="clapperboard" class="w-4 h-4 text-rose-400"></i>
+              <span>Відео → 3D</span>
+            </label>
+            <input id="input-upload-video" type="file" accept="video/*" class="hidden" />
+          </div>
+
+          <div id="camera-controls-row" class="hidden grid grid-cols-2 gap-2 pt-1">
+            <button id="btn-snap-photo" class="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-semibold text-xs transition-all">
+              <i data-lucide="aperture" class="w-4 h-4"></i>
+              <span>Зробити фото</span>
+            </button>
+            <button id="btn-video-scan" class="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-rose-500 hover:bg-rose-400 text-white font-semibold text-xs transition-all">
+              <i data-lucide="disc" class="w-4 h-4"></i>
+              <span id="btn-video-scan-label">Відео-скан 3D</span>
+            </button>
+          </div>
+
+          <div class="space-y-2 pt-1">
+            <div class="flex items-center justify-between text-xs">
+              <span class="text-slate-400">Зняті кадри (<span id="shot-count" class="text-white font-mono-tech">1</span>)</span>
+              <button id="btn-clear-shots" class="text-[11px] text-rose-400 hover:text-rose-300 transition-colors">Скинути</button>
+            </div>
+            <div id="shots-strip" class="flex gap-2 overflow-x-auto pb-1"></div>
+          </div>
+        </div>
+
+        <!-- Demo Objects -->
+        <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 space-y-2.5">
+          <div class="flex items-center justify-between">
+            <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-400">Тестові скани (Демо 1:1)</h2>
+            <span class="text-[10px] text-slate-500">Без камери</span>
+          </div>
+          <div class="grid grid-cols-3 gap-2">
+            <button data-demo="vase" class="demo-btn p-2 rounded-xl bg-slate-950/70 hover:bg-slate-800 border border-slate-800 hover:border-cyan-500/40 text-left transition-all">
+              <div class="text-xs font-semibold text-white">Ваза</div>
+              <div class="text-[10px] text-slate-400 font-mono-tech">65×123 мм</div>
+            </button>
+            <button data-demo="bracket" class="demo-btn p-2 rounded-xl bg-slate-950/70 hover:bg-slate-800 border border-slate-800 hover:border-cyan-500/40 text-left transition-all">
+              <div class="text-xs font-semibold text-white">Кронштейн</div>
+              <div class="text-[10px] text-slate-400 font-mono-tech">74×46 мм</div>
+            </button>
+            <button data-demo="chess" class="demo-btn p-2 rounded-xl bg-slate-950/70 hover:bg-slate-800 border border-slate-800 hover:border-cyan-500/40 text-left transition-all">
+              <div class="text-xs font-semibold text-white">Фігура</div>
+              <div class="text-[10px] text-slate-400 font-mono-tech">36×82 мм</div>
+            </button>
+          </div>
+        </div>
+
+        <button id="btn-next-to-calibrate" class="w-full py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-400 text-slate-950 font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-cyan-500/20 transition-all">
+          <span>Далі: Калібрування розмірів</span>
+          <i data-lucide="arrow-right" class="w-4 h-4"></i>
+        </button>
+      </section>
+
+      <!-- PANEL 2: CALIBRATION & SEGMENTATION -->
+      <section id="panel-calibrate" class="step-panel hidden space-y-3">
+        <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 space-y-3">
+          <div class="flex items-center justify-between">
+            <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-400">Еталон реального розміру</h2>
+            <span id="mm-per-px-badge" class="text-[11px] font-mono-tech text-emerald-300 bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.5 rounded-full">0.250 мм/px</span>
+          </div>
+
+          <div class="grid grid-cols-2 gap-2">
+            <button data-ref="85.6" class="ref-preset-btn px-2.5 py-2 rounded-xl border text-left transition-all">
+              <div class="text-xs font-semibold text-white">Банківська картка</div>
+              <div class="text-[10px] text-slate-400 font-mono-tech">85.60 мм (довжина)</div>
+            </button>
+            <button data-ref="23.5" class="ref-preset-btn px-2.5 py-2 rounded-xl border text-left transition-all">
+              <div class="text-xs font-semibold text-white">Монета 10 грн</div>
+              <div class="text-[10px] text-slate-400 font-mono-tech">23.50 мм (діаметр)</div>
+            </button>
+            <button data-ref="23.25" class="ref-preset-btn px-2.5 py-2 rounded-xl border text-left transition-all">
+              <div class="text-xs font-semibold text-white">Монета 1 Євро</div>
+              <div class="text-[10px] text-slate-400 font-mono-tech">23.25 мм (діаметр)</div>
+            </button>
+            <button data-ref="100" class="ref-preset-btn px-2.5 py-2 rounded-xl border text-left transition-all">
+              <div class="text-xs font-semibold text-white">Лінійка 10 см</div>
+              <div class="text-[10px] text-slate-400 font-mono-tech">100.00 мм</div>
+            </button>
+          </div>
+
+          <div class="flex items-center gap-2 pt-1">
+            <label for="input-ref-mm" class="text-xs text-slate-300 shrink-0">Довжина еталона (мм):</label>
+            <input id="input-ref-mm" type="number" step="0.1" min="1" max="2000" value="85.6" class="w-full bg-slate-950 border border-slate-700 focus:border-cyan-400 rounded-lg px-2.5 py-1.5 text-xs font-mono-tech text-white outline-none" />
+          </div>
+
+          <p class="text-[11px] text-slate-400 leading-relaxed">
+            Перетягніть маркери <span class="text-amber-400 font-semibold">A</span> і <span class="text-amber-400 font-semibold">B</span> на фото вздовж країв еталонного предмета (картки, монети чи лінійки).
+          </p>
+        </div>
+
+        <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 space-y-3">
+          <div class="flex items-center justify-between">
+            <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-400">Виділення контуру об'єкта</h2>
+            <label class="flex items-center gap-1.5 text-[11px] text-slate-300 cursor-pointer">
+              <input id="toggle-show-mask" type="checkbox" checked class="accent-cyan-400 rounded" />
+              <span>Маска</span>
+            </label>
+          </div>
+
+          <div class="space-y-1.5">
+            <div class="flex justify-between text-xs">
+              <span class="text-slate-300">Поріг контрасту фону</span>
+              <span id="val-threshold" class="font-mono-tech text-cyan-300">135</span>
+            </div>
+            <input id="slider-threshold" type="range" min="20" max="235" value="135" class="w-full" />
+          </div>
+
+          <div class="space-y-1.5">
+            <div class="flex justify-between text-xs">
+              <span class="text-slate-300">Згладжування країв</span>
+              <span id="val-smooth" class="font-mono-tech text-cyan-300">3</span>
+            </div>
+            <input id="slider-smooth" type="range" min="0" max="8" value="3" class="w-full" />
+          </div>
+
+          <div class="flex items-center justify-between pt-1">
+            <label class="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
+              <input id="toggle-invert-mask" type="checkbox" class="accent-cyan-400 rounded" />
+              <span>Темний фон (інвертувати)</span>
+            </label>
+            <button id="btn-auto-threshold" class="text-[11px] px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-slate-700 transition-colors">
+              Авто-поріг
+            </button>
+          </div>
+        </div>
+
+        <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 space-y-2">
+          <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-400">Виміряні габарити об'єкта</h2>
+          <div class="grid grid-cols-3 gap-2 text-center">
+            <div class="bg-slate-950/80 rounded-xl p-2 border border-slate-800">
+              <div class="text-[10px] text-slate-400">Ширина (X)</div>
+              <div id="cal-dim-x" class="text-sm font-bold font-mono-tech text-white">-- мм</div>
+            </div>
+            <div class="bg-slate-950/80 rounded-xl p-2 border border-slate-800">
+              <div class="text-[10px] text-slate-400">Висота (Z)</div>
+              <div id="cal-dim-z" class="text-sm font-bold font-mono-tech text-white">-- мм</div>
+            </div>
+            <div class="bg-slate-950/80 rounded-xl p-2 border border-slate-800">
+              <div class="text-[10px] text-slate-400">Відрізок AB</div>
+              <div id="cal-ab-px" class="text-sm font-bold font-mono-tech text-amber-300">-- px</div>
+            </div>
+          </div>
+        </div>
+
+        <button id="btn-build-3d" class="w-full py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 text-slate-950 font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 transition-all">
+          <i data-lucide="cpu" class="w-4 h-4"></i>
+          <span>Побудувати 3D-модель 1:1</span>
+        </button>
+      </section>
+
+      <!-- PANEL 3: 3D MODEL, SCALE & PRINT EXPORT -->
+      <section id="panel-model" class="step-panel hidden space-y-3">
+        <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 space-y-3">
+          <div class="flex items-center justify-between">
+            <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-400">Реальні розміри (мм)</h2>
+            <button id="btn-reset-scale" class="text-[11px] text-cyan-400 hover:text-cyan-300 transition-colors">Скинути 1:1</button>
+          </div>
+
+          <div class="grid grid-cols-3 gap-2">
+            <div>
+              <label for="dim-input-x" class="block text-[10px] text-slate-400 mb-1">X Ширина</label>
+              <input id="dim-input-x" type="number" step="0.5" min="5" max="400" class="w-full bg-slate-950 border border-slate-700 focus:border-cyan-400 rounded-lg px-2 py-1.5 text-xs font-mono-tech text-white outline-none" />
+            </div>
+            <div>
+              <label for="dim-input-y" class="block text-[10px] text-slate-400 mb-1">Y Глибина</label>
+              <input id="dim-input-y" type="number" step="0.5" min="5" max="400" class="w-full bg-slate-950 border border-slate-700 focus:border-cyan-400 rounded-lg px-2 py-1.5 text-xs font-mono-tech text-white outline-none" />
+            </div>
+            <div>
+              <label for="dim-input-z" class="block text-[10px] text-slate-400 mb-1">Z Висота</label>
+              <input id="dim-input-z" type="number" step="0.5" min="2" max="400" class="w-full bg-slate-950 border border-slate-700 focus:border-cyan-400 rounded-lg px-2 py-1.5 text-xs font-mono-tech text-white outline-none" />
+            </div>
+          </div>
+
+          <div class="flex items-center justify-between text-xs pt-0.5">
+            <label class="flex items-center gap-2 text-slate-300 cursor-pointer">
+              <input id="toggle-lock-ratio" type="checkbox" checked class="accent-cyan-400 rounded" />
+              <span>Зберегти пропорції</span>
+            </label>
+            <span id="bed-fit-badge" class="text-[11px] font-medium px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">Вміщується на стіл</span>
+          </div>
+        </div>
+
+        <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 space-y-3">
+          <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-400">Параметри сітки та друку</h2>
+
+          <div class="space-y-1.5">
+            <div class="flex justify-between text-xs">
+              <span class="text-slate-300">Деталізація полігонів</span>
+              <span id="val-mesh-res" class="font-mono-tech text-cyan-300">48</span>
+            </div>
+            <input id="slider-mesh-res" type="range" min="16" max="96" step="8" value="48" class="w-full" />
+          </div>
+
+          <div id="extrude-depth-row" class="space-y-1.5 hidden">
+            <div class="flex justify-between text-xs">
+              <span class="text-slate-300">Товщина екструзії (мм)</span>
+              <span id="val-extrude-mm" class="font-mono-tech text-cyan-300">12 мм</span>
+            </div>
+            <input id="slider-extrude-mm" type="range" min="2" max="80" step="1" value="12" class="w-full" />
+          </div>
+
+          <div class="space-y-1.5">
+            <div class="flex justify-between text-xs">
+              <span class="text-slate-300">Заповнення друку (Infill)</span>
+              <span id="val-infill" class="font-mono-tech text-cyan-300">20%</span>
+            </div>
+            <input id="slider-infill" type="range" min="10" max="100" step="5" value="20" class="w-full" />
+          </div>
+
+          <div class="grid grid-cols-2 gap-2 pt-1">
+            <div class="bg-slate-950/80 rounded-xl p-2.5 border border-slate-800">
+              <div class="text-[10px] text-slate-400">Об'єм моделі</div>
+              <div id="stat-volume" class="text-sm font-bold font-mono-tech text-white">-- см³</div>
+            </div>
+            <div class="bg-slate-950/80 rounded-xl p-2.5 border border-slate-800">
+              <div class="text-[10px] text-slate-400">Оцінка PLA</div>
+              <div id="stat-weight" class="text-sm font-bold font-mono-tech text-cyan-300">-- г</div>
+            </div>
+            <div class="bg-slate-950/80 rounded-xl p-2.5 border border-slate-800">
+              <div class="text-[10px] text-slate-400">Трикутників</div>
+              <div id="stat-tris" class="text-sm font-bold font-mono-tech text-slate-200">--</div>
+            </div>
+            <div class="bg-slate-950/80 rounded-xl p-2.5 border border-slate-800">
+              <div class="text-[10px] text-slate-400">Стан для слайсера</div>
+              <div class="text-xs font-semibold text-emerald-400 flex items-center gap-1 mt-0.5">
+                <i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i>
+                <span>Замкнена (Z=0)</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 space-y-2.5">
+          <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-400">Експорт для 3D-принтера</h2>
+          <button id="btn-export-stl" class="w-full py-3 rounded-xl bg-cyan-500 hover:bg-cyan-400 active:scale-[0.99] text-slate-950 font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-cyan-500/20 transition-all">
+            <i data-lucide="download" class="w-4 h-4"></i>
+            <span>Завантажити Binary STL (мм)</span>
+          </button>
+          <button id="btn-export-obj" class="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-100 font-medium text-xs flex items-center justify-center gap-2 border border-slate-700 transition-all">
+            <i data-lucide="file-code-2" class="w-4 h-4 text-cyan-400"></i>
+            <span>Завантажити OBJ (для CAD / Blender)</span>
+          </button>
+          <p class="text-[11px] text-slate-400 leading-relaxed">
+            Сумісно з PrusaSlicer, Bambu Studio, OrcaSlicer та UltiMaker Cura. Одиниці файлу: міліметри (1:1).
+          </p>
+        </div>
+      </section>
+    </aside>
+
+    <!-- Right Main Interactive Viewport -->
+    <section class="lg:col-span-8 flex flex-col gap-3 order-1 lg:order-2">
+      <div class="relative bg-slate-900/80 border border-slate-800 rounded-2xl overflow-hidden shadow-2xl">
+        <div class="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 border-b border-slate-800 bg-slate-950/70">
+          <div class="flex items-center gap-2">
+            <span id="viewport-status-dot" class="w-2 h-2 rounded-full bg-emerald-400"></span>
+            <span id="viewport-title" class="text-xs font-semibold text-slate-200">Зйомка фото / відео</span>
+          </div>
+
+          <div id="viewport-3d-tools" class="flex items-center gap-1.5">
+            <button id="btn-toggle-wireframe" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-[11px] text-slate-300 border border-slate-700 transition-colors">Сітка</button>
+            <button id="btn-toggle-bed" class="px-2.5 py-1 rounded-lg bg-cyan-500/20 text-[11px] text-cyan-300 border border-cyan-500/40 transition-colors">Стіл 220мм</button>
+            <button id="btn-reset-camera" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-[11px] text-slate-300 border border-slate-700 transition-colors">Скинути вид</button>
+          </div>
+
+          <div id="viewport-cal-tools" class="hidden flex items-center gap-1.5">
+            <button id="btn-reset-pins" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-[11px] text-amber-300 border border-slate-700 transition-colors">Скинути A–B</button>
+          </div>
+        </div>
+
+        <div class="relative w-full h-[420px] sm:h-[500px] lg:h-[560px] cad-grid-bg select-none">
+          <!-- STAGE 1: Camera & Shot Preview -->
+          <div id="stage-capture" class="absolute inset-0 hidden flex flex-col items-center justify-center bg-slate-950">
+            <video id="camera-video" autoplay playsinline muted class="hidden w-full h-full object-cover"></video>
+            <canvas id="capture-preview-canvas" class="w-full h-full object-contain"></canvas>
+            <div id="camera-flash" class="pointer-events-none absolute inset-0 bg-white opacity-0"></div>
+
+            <!-- Live Video Scan Progress Bar & REC Indicator -->
+            <div id="video-rec-hud" class="hidden absolute top-3 left-3 right-3 z-20 flex flex-col gap-1.5">
+              <div class="flex items-center justify-between bg-slate-950/85 backdrop-blur-md border border-rose-500/50 rounded-xl px-3 py-1.5">
+                <div class="flex items-center gap-2">
+                  <span class="w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse"></span>
+                  <span class="text-xs font-bold text-rose-300">ВІДЕО-СКАН 360°</span>
+                  <span id="rec-timer" class="text-xs font-mono-tech text-white">00:00</span>
+                </div>
+                <span id="rec-frames-badge" class="text-xs font-mono-tech text-cyan-300">0 / 12 кадрів</span>
+              </div>
+              <div class="w-full h-1.5 bg-slate-900/90 rounded-full overflow-hidden">
+                <div id="rec-progress-bar" class="h-full bg-gradient-to-r from-rose-500 to-cyan-400 transition-all duration-200" style="width: 0%"></div>
+              </div>
+            </div>
+
+            <!-- Alignment Overlay when camera is active -->
+            <div id="camera-reticle" class="hidden pointer-events-none absolute inset-0 flex items-center justify-center pb-16">
+              <div class="w-52 h-52 sm:w-64 sm:h-64 border-2 border-dashed border-cyan-400/70 rounded-2xl relative">
+                <div class="absolute -top-6 left-1/2 -translate-x-1/2 bg-slate-950/85 px-2.5 py-0.5 rounded-full text-[11px] text-cyan-300 whitespace-nowrap border border-cyan-500/30">
+                  Об'єкт + картка в кадрі
+                </div>
+                <div class="absolute top-1/2 left-0 right-0 h-px bg-cyan-400/30"></div>
+                <div class="absolute left-1/2 top-0 bottom-0 w-px bg-cyan-400/30"></div>
+              </div>
+            </div>
+
+            <!-- ON-SCREEN CAMERA CONTROLS OVERLAY -->
+            <div id="camera-overlay-bar" class="hidden absolute bottom-0 inset-x-0 z-20 bg-gradient-to-t from-slate-950/95 via-slate-950/75 to-transparent pt-8 pb-4 px-4">
+              <div class="max-w-md mx-auto flex items-center justify-between gap-3">
+                <button id="overlay-btn-flip" class="flex flex-col items-center gap-1 text-slate-200 hover:text-white active:scale-95 transition-all" title="Перемкнути камеру">
+                  <div class="w-11 h-11 rounded-full bg-slate-800/90 border border-slate-600/80 flex items-center justify-center backdrop-blur-md">
+                    <i data-lucide="refresh-cw" class="w-5 h-5"></i>
+                  </div>
+                  <span class="text-[10px] font-medium">Камера</span>
+                </button>
+
+                <button id="overlay-btn-photo" class="flex flex-col items-center gap-1 active:scale-95 transition-all" title="Зробити фото">
+                  <div class="w-16 h-16 rounded-full border-4 border-white p-1 bg-white/10 shadow-lg shadow-black/50 flex items-center justify-center">
+                    <div class="w-full h-full rounded-full bg-white hover:bg-cyan-200 transition-colors"></div>
+                  </div>
+                  <span class="text-[11px] font-bold text-white">Зробити фото</span>
+                </button>
+
+                <button id="overlay-btn-video" class="flex flex-col items-center gap-1 active:scale-95 transition-all" title="Записати відео для 3D-моделі">
+                  <div id="overlay-video-ring" class="w-14 h-14 rounded-full border-4 border-rose-400/90 p-1.5 bg-slate-900/70 shadow-lg flex items-center justify-center transition-all">
+                    <div id="overlay-video-dot" class="w-full h-full rounded-full bg-rose-500 transition-all"></div>
+                  </div>
+                  <span id="overlay-video-label" class="text-[11px] font-bold text-rose-300">Відео 3D</span>
+                </button>
+
+                <button id="overlay-btn-done" class="flex flex-col items-center gap-1 text-emerald-300 hover:text-emerald-200 active:scale-95 transition-all" title="Перейти до 3D">
+                  <div class="w-11 h-11 rounded-full bg-emerald-500/20 border border-emerald-400/60 flex items-center justify-center backdrop-blur-md">
+                    <i data-lucide="check" class="w-5 h-5"></i>
+                  </div>
+                  <span class="text-[10px] font-semibold">Готово</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- STAGE 2: Interactive 2D Calibration Canvas -->
+          <div id="stage-calibrate" class="absolute inset-0 hidden flex items-center justify-center bg-slate-950">
+            <canvas id="calibrate-canvas" class="w-full h-full touch-none-canvas cursor-crosshair"></canvas>
+            <div class="pointer-events-none absolute bottom-3 left-3 bg-slate-950/85 backdrop-blur-sm border border-slate-800 rounded-xl px-3 py-1.5 text-[11px] text-slate-300">
+              Перетягніть точки <span class="text-amber-400 font-bold">A</span> і <span class="text-amber-400 font-bold">B</span> на краї еталона
+            </div>
+          </div>
+
+          <!-- STAGE 3: Interactive 3D Three.js Viewport -->
+          <div id="stage-model" class="absolute inset-0">
+            <div id="three-container" class="w-full h-full touch-none-canvas cursor-grab active:cursor-grabbing"></div>
+            <div class="pointer-events-none absolute bottom-3 left-3 right-3 flex flex-wrap items-center justify-between gap-2">
+              <div class="bg-slate-950/85 backdrop-blur-md border border-slate-800 rounded-xl px-3 py-1.5 text-xs font-mono-tech text-slate-200 flex items-center gap-3">
+                <span>X: <strong id="hud-x" class="text-cyan-300">--</strong> мм</span>
+                <span>Y: <strong id="hud-y" class="text-cyan-300">--</strong> мм</span>
+                <span>Z: <strong id="hud-z" class="text-cyan-300">--</strong> мм</span>
+              </div>
+              <div class="bg-slate-950/85 backdrop-blur-md border border-slate-800 rounded-xl px-3 py-1.5 text-[11px] text-slate-400 hidden sm:block">
+                Обертання: перетягування · Масштаб: колесо / щипок
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Accuracy & Scanning Tips Strip -->
+      <div class="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-3.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+        <div class="flex items-start gap-2.5">
+          <i data-lucide="info" class="w-4 h-4 text-cyan-400 shrink-0 mt-0.5"></i>
+          <p class="text-xs text-slate-300 leading-relaxed">
+            <strong class="text-white">Відео-скан або фото:</strong> для точного масштабу 1:1 покладіть поруч банківську картку. У режимі <strong>Відео 3D</strong> повільно обійдіть об'єкт по колу — додаток автоматично збере до 12 ракурсів і побудує 3D-модель.
+          </p>
+        </div>
+        <button id="btn-switch-step-quick" class="shrink-0 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-medium text-cyan-300 border border-slate-700 transition-colors">
+          Перейти до 3D-моделі
+        </button>
+      </div>
+    </section>
+  </main>
+
+  <!-- Toast Notification -->
+  <div id="toast" class="fixed bottom-5 right-5 z-50 translate-y-16 opacity-0 pointer-events-none transition-all duration-300 bg-slate-900 border border-cyan-500/40 text-white px-4 py-2.5 rounded-xl shadow-2xl flex items-center gap-2.5 text-xs font-medium max-w-xs">
+    <i data-lucide="sparkles" class="w-4 h-4 text-cyan-400 shrink-0"></i>
+    <span id="toast-text">Готово</span>
+  </div>
+
+  <script>
+    const state = {
+      step: 'capture',
+      mode: 'lathe',
+      shots: [],
+      activeShotIndex: 0,
+      cameraStream: null,
+      facingMode: 'environment',
+
+      isVideoScanning: false,
+      videoScanInterval: null,
+      videoTimerInterval: null,
+      videoScanStartMs: 0,
+      videoMaxFrames: 12,
+      videoCapturedCount: 0,
+
+      pinA: { x: 0.14, y: 0.84 },
+      pinB: { x: 0.44, y: 0.84 },
+      draggingPin: null,
+      refLengthMm: 85.6,
+      mmPerPx: 0.28,
+
+      threshold: 135,
+      smooth: 3,
+      invertMask: false,
+      showMask: true,
+
+      meshRes: 48,
+      extrudeDepthMm: 12,
+      infillPct: 20,
+      lockRatio: true,
+      baseDimsMm: { x: 68, y: 68, z: 124 },
+      currentDimsMm: { x: 68, y: 68, z: 124 },
+      showWireframe: false,
+      showBed: true,
+
+      scene: null,
+      camera: null,
+      renderer: null,
+      meshGroup: null,
+      activeMesh: null,
+      bedGroup: null,
+      orbit: {
+        theta: 0.68, phi: 1.08, radius: 240, targetY: 50,
+        isDragging: false, lastX: 0, lastY: 0, pinchDist: 0
+      }
+    };
+
+    let toastTimer = null;
+    function showToast(message) {
+      const toast = document.getElementById('toast');
+      document.getElementById('toast-text').textContent = message;
+      toast.classList.remove('translate-y-16', 'opacity-0');
+      toast.classList.add('translate-y-0', 'opacity-100');
+      if (toastTimer) clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => {
+        toast.classList.add('translate-y-16', 'opacity-0');
+        toast.classList.remove('translate-y-0', 'opacity-100');
+      }, 3200);
+    }
+
+    function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+
+    function triggerShutterFlash() {
+      const flash = document.getElementById('camera-flash');
+      flash.classList.remove('animate-flash');
+      void flash.offsetWidth;
+      flash.classList.add('animate-flash');
+    }
+
+    function createDemoShot(type) {
+      const w = 640, h = 480;
+      const c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      const ctx = c.getContext('2d', { willReadFrequently: true });
+
+      ctx.fillStyle = '#f1f5f9';
+      ctx.fillRect(0, 0, w, h);
+      ctx.fillStyle = '#e2e8f0';
+      ctx.fillRect(0, h * 0.78, w, h * 0.22);
+
+      const cardX = 56, cardY = 305, cardW = 190, cardH = 120;
+      ctx.fillStyle = '#cbd5e1';
+      ctx.strokeStyle = '#94a3b8';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.roundRect(cardX, cardY, cardW, cardH, 10);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = '#94a3b8';
+      ctx.font = '600 13px Inter, sans-serif';
+      ctx.fillText('ЕТАЛОН 85.6 мм', cardX + 26, cardY + 66);
+
+      ctx.fillStyle = '#1e293b';
+      const cx = 420;
+
+      if (type === 'vase') {
+        ctx.beginPath();
+        ctx.moveTo(cx - 42, 425);
+        ctx.bezierCurveTo(cx - 88, 360, cx - 82, 275, cx - 34, 225);
+        ctx.bezierCurveTo(cx - 22, 200, cx - 38, 170, cx - 44, 150);
+        ctx.lineTo(cx + 44, 150);
+        ctx.bezierCurveTo(cx + 38, 170, cx + 22, 200, cx + 34, 225);
+        ctx.bezierCurveTo(cx + 82, 275, cx + 88, 360, cx + 42, 425);
+        ctx.closePath();
+        ctx.fill();
+      } else if (type === 'bracket') {
+        ctx.beginPath();
+        ctx.roundRect(cx - 95, 220, 190, 115, 16);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.roundRect(cx - 48, 155, 96, 85, 14);
+        ctx.fill();
+        ctx.fillStyle = '#f1f5f9';
+        ctx.beginPath();
+        ctx.arc(cx, 192, 18, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        ctx.beginPath();
+        ctx.moveTo(cx - 56, 425);
+        ctx.lineTo(cx - 52, 402);
+        ctx.bezierCurveTo(cx - 34, 388, cx - 22, 325, cx - 18, 285);
+        ctx.lineTo(cx - 32, 274);
+        ctx.lineTo(cx - 18, 262);
+        ctx.bezierCurveTo(cx - 42, 240, cx - 40, 192, cx, 192);
+        ctx.bezierCurveTo(cx + 40, 192, cx + 42, 240, cx + 18, 262);
+        ctx.lineTo(cx + 32, 274);
+        ctx.lineTo(cx + 18, 285);
+        ctx.bezierCurveTo(cx + 22, 325, cx + 34, 388, cx + 52, 402);
+        ctx.lineTo(cx + 56, 425);
+        ctx.closePath();
+        ctx.fill();
+      }
+
+      return {
+        id: 'demo-' + type + '-' + Date.now(),
+        canvas: c, width: w, height: h,
+        label: type === 'vase' ? 'Ваза' : type === 'bracket' ? 'Кронштейн' : 'Фігура',
+        pinA: { x: cardX / w, y: (cardY + cardH + 6) / h },
+        pinB: { x: (cardX + cardW) / w, y: (cardY + cardH + 6) / h }
+      };
+    }
+
+    function loadDemo(type) {
+      stopCamera();
+      const shot = createDemoShot(type);
+      state.shots = [shot];
+      state.activeShotIndex = 0;
+      state.pinA = { ...shot.pinA };
+      state.pinB = { ...shot.pinB };
+      state.refLengthMm = 85.6;
+      document.getElementById('input-ref-mm').value = '85.6';
+      state.threshold = 120;
+      document.getElementById('slider-threshold').value = 120;
+      document.getElementById('val-threshold').textContent = '120';
+      state.invertMask = false;
+      document.getElementById('toggle-invert-mask').checked = false;
+
+      if (type === 'bracket') {
+        setMode('extrude', false);
+        state.extrudeDepthMm = 14;
+        document.getElementById('slider-extrude-mm').value = 14;
+        document.getElementById('val-extrude-mm').textContent = '14 мм';
+      } else {
+        setMode('lathe', false);
+      }
+
+      updateRefPresetHighlight();
+      renderShotsStrip();
+      renderCapturePreview();
+      updateCalibrationReadouts();
+      rebuild3DModel();
+    }
+
+    function setStep(step) {
+      if (step !== 'capture' && state.isVideoScanning) stopVideoScan(false);
+      state.step = step;
+
+      document.querySelectorAll('.step-tab').forEach(btn => {
+        const active = btn.dataset.step === step;
+        btn.className = active
+          ? 'step-tab flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-semibold transition-all bg-cyan-500/20 text-cyan-300 border border-cyan-500/40'
+          : 'step-tab flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-medium transition-all text-slate-400 hover:text-slate-200 border border-transparent';
+      });
+
+      document.querySelectorAll('.step-panel').forEach(el => el.classList.add('hidden'));
+      document.getElementById('panel-' + step).classList.remove('hidden');
+
+      document.getElementById('stage-capture').classList.toggle('hidden', step !== 'capture');
+      document.getElementById('stage-calibrate').classList.toggle('hidden', step !== 'calibrate');
+      document.getElementById('stage-model').classList.toggle('hidden', step !== 'model');
+
+      document.getElementById('viewport-3d-tools').classList.toggle('hidden', step !== 'model');
+      document.getElementById('viewport-cal-tools').classList.toggle('hidden', step !== 'calibrate');
+
+      const titleEl = document.getElementById('viewport-title');
+      const quickBtn = document.getElementById('btn-switch-step-quick');
+
+      if (step === 'capture') {
+        titleEl.textContent = state.cameraStream ? 'Камера активна — зробіть фото або запустіть Відео 3D' : 'Зйомка фото / відео';
+        quickBtn.textContent = 'Перейти до 3D-моделі';
+        renderCapturePreview();
+      } else if (step === 'calibrate') {
+        titleEl.textContent = 'Калібрування масштабу 1:1 та маска об\'єкта';
+        quickBtn.textContent = 'Побудувати 3D-модель';
+        renderCalibrationCanvas();
+      } else {
+        titleEl.textContent = '3D-перегляд (стіл принтера 220×220 мм)';
+        quickBtn.textContent = 'Перейти до камери';
+        resizeThree();
+      }
+    }
+
+    function setMode(mode, rebuild = true) {
+      state.mode = mode;
+      const badgeMap = { lathe: '360° Профіль', extrude: 'Екструзія контуру', multiview: 'Відео / 360° скан' };
+      const hintMap = {
+        lathe: 'Зробіть 1 чітке фото симетричного об\'єкта збоку на світлому фоні поруч із карткою або монетою.',
+        extrude: 'Зробіть фото плоскої деталі зверху (90°) поруч із карткою та вкажіть точну товщину в мм.',
+        multiview: 'Натисніть «Відео 3D» на камері або завантажте відео-обліт об\'єкта (2–12 ракурсів) для об\'ємної 3D-реконструкції.'
+      };
+      document.getElementById('mode-badge').textContent = badgeMap[mode];
+      document.getElementById('mode-hint').textContent = hintMap[mode];
+      document.getElementById('extrude-depth-row').classList.toggle('hidden', mode !== 'extrude');
+
+      document.querySelectorAll('.mode-btn').forEach(btn => {
+        const active = btn.dataset.mode === mode;
+        btn.className = active
+          ? 'mode-btn flex flex-col items-center gap-1 p-2.5 rounded-xl border text-center transition-all bg-cyan-500/15 border-cyan-400/70 text-cyan-200'
+          : 'mode-btn flex flex-col items-center gap-1 p-2.5 rounded-xl border text-center transition-all bg-slate-950/60 border-slate-800 text-slate-300 hover:border-slate-700';
+      });
+
+      if (rebuild) rebuild3DModel();
+    }
+
+    async function startCamera() {
+      if (state.cameraStream) { stopCamera(); return; }
+      setStep('capture');
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        showToast('Камера недоступна — завантажте фото або відео з галереї');
+        return;
+      }
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: state.facingMode }, width: { ideal: 1280 }, height: { ideal: 720 } },
+          audio: false
+        });
+        state.cameraStream = stream;
+        const video = document.getElementById('camera-video');
+        video.srcObject = stream;
+        await video.play();
+        video.classList.remove('hidden');
+        document.getElementById('capture-preview-canvas').classList.add('hidden');
+        document.getElementById('camera-reticle').classList.remove('hidden');
+        document.getElementById('camera-overlay-bar').classList.remove('hidden');
+        document.getElementById('camera-controls-row').classList.remove('hidden');
+        document.getElementById('btn-camera-label').textContent = 'Вимкнути камеру';
+        document.getElementById('viewport-title').textContent = 'Камера активна — зробіть фото або запустіть Відео 3D';
+        showToast('Камеру увімкнено. Натисніть «Зробити фото» або «Відео 3D».');
+      } catch (err) {
+        showToast('Немає доступу до камери. Використайте «Фото з галереї» або «Відео → 3D».');
+      }
+    }
+
+    function stopCamera() {
+      if (state.isVideoScanning) stopVideoScan(false);
+      if (state.cameraStream) {
+        state.cameraStream.getTracks().forEach(t => t.stop());
+        state.cameraStream = null;
+      }
+      const video = document.getElementById('camera-video');
+      video.srcObject = null;
+      video.classList.add('hidden');
+      document.getElementById('capture-preview-canvas').classList.remove('hidden');
+      document.getElementById('camera-reticle').classList.add('hidden');
+      document.getElementById('camera-overlay-bar').classList.add('hidden');
+      document.getElementById('camera-controls-row').classList.add('hidden');
+      document.getElementById('btn-camera-label').textContent = 'Увімкнути камеру телефону';
+      renderCapturePreview();
+    }
+
+    function captureVideoFrame(labelPrefix = 'Фото', flash = true) {
+      const video = document.getElementById('camera-video');
+      if (!video.videoWidth || !video.videoHeight) return null;
+      const maxDim = 720;
+      const scale = Math.min(1, maxDim / Math.max(video.videoWidth, video.videoHeight));
+      const c = document.createElement('canvas');
+      c.width = Math.round(video.videoWidth * scale);
+      c.height = Math.round(video.videoHeight * scale);
+      c.getContext('2d', { willReadFrequently: true }).drawImage(video, 0, 0, c.width, c.height);
+
+      if (flash) triggerShutterFlash();
+
+      const shot = {
+        id: 'cam-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+        canvas: c, width: c.width, height: c.height,
+        label: labelPrefix + ' #' + (state.shots.length + 1)
+      };
+
+      if (state.shots.length === 1 && state.shots[0].id.startsWith('demo-')) {
+        state.shots = [shot];
+      } else {
+        state.shots.push(shot);
+      }
+      state.activeShotIndex = state.shots.length - 1;
+      renderShotsStrip();
+      return shot;
+    }
+
+    function snapFromCamera() {
+      const shot = captureVideoFrame('Фото', true);
+      if (!shot) return;
+      autoThresholdCurrentShot();
+      updateCalibrationReadouts();
+      rebuild3DModel();
+      showToast('Зроблено ' + shot.label + ' — можна зняти ще або натиснути «Готово»');
+    }
+
+    function toggleVideoScan() {
+      if (state.isVideoScanning) stopVideoScan(true);
+      else startVideoScan();
+    }
+
+    function startVideoScan() {
+      if (!state.cameraStream) { showToast('Спочатку увімкніть камеру'); return; }
+      state.isVideoScanning = true;
+      state.shots = [];
+      state.videoCapturedCount = 0;
+      state.videoScanStartMs = Date.now();
+      setMode('multiview', false);
+
+      document.getElementById('video-rec-hud').classList.remove('hidden');
+      document.getElementById('overlay-video-dot').classList.remove('rounded-full');
+      document.getElementById('overlay-video-dot').classList.add('rounded-md', 'scale-75');
+      document.getElementById('overlay-video-label').textContent = 'Стоп → 3D';
+      document.getElementById('btn-video-scan-label').textContent = 'Стоп → 3D';
+      document.getElementById('rec-progress-bar').style.width = '0%';
+      document.getElementById('rec-frames-badge').textContent = `0 / ${state.videoMaxFrames} кадрів`;
+      document.getElementById('rec-timer').textContent = '00:00';
+
+      showToast('Повільно обійдіть об\'єкт по колу...');
+
+      const grab = () => {
+        if (!state.isVideoScanning) return;
+        const shot = captureVideoFrame('Відео', false);
+        if (shot) {
+          state.videoCapturedCount++;
+          const pct = Math.min(100, Math.round((state.videoCapturedCount / state.videoMaxFrames) * 100));
+          document.getElementById('rec-progress-bar').style.width = pct + '%';
+          document.getElementById('rec-frames-badge').textContent = `${state.videoCapturedCount} / ${state.videoMaxFrames} кадрів`;
+        }
+        if (state.videoCapturedCount >= state.videoMaxFrames) stopVideoScan(true);
+      };
+
+      grab();
+      state.videoScanInterval = setInterval(grab, 450);
+      state.videoTimerInterval = setInterval(() => {
+        const sec = Math.floor((Date.now() - state.videoScanStartMs) / 1000);
+        const mm = String(Math.floor(sec / 60)).padStart(2, '0');
+        const ss = String(sec % 60).padStart(2, '0');
+        document.getElementById('rec-timer').textContent = `${mm}:${ss}`;
+      }, 250);
+    }
+
+    function stopVideoScan(buildNow = true) {
+      if (state.videoScanInterval) { clearInterval(state.videoScanInterval); state.videoScanInterval = null; }
+      if (state.videoTimerInterval) { clearInterval(state.videoTimerInterval); state.videoTimerInterval = null; }
+      state.isVideoScanning = false;
+
+      document.getElementById('video-rec-hud').classList.add('hidden');
+      document.getElementById('overlay-video-dot').classList.add('rounded-full');
+      document.getElementById('overlay-video-dot').classList.remove('rounded-md', 'scale-75');
+      document.getElementById('overlay-video-label').textContent = 'Відео 3D';
+      document.getElementById('btn-video-scan-label').textContent = 'Відео-скан 3D';
+
+      if (buildNow && state.shots.length > 0) {
+        stopCamera();
+        state.activeShotIndex = 0;
+        autoThresholdCurrentShot();
+        updateCalibrationReadouts();
+        rebuild3DModel();
+        setStep('model');
+        showToast(`3D-модель побудовано з відео (${state.shots.length} ракурсів)!`);
+      }
+    }
+
+    function handleVideoFileUpload(file) {
+      if (!file) return;
+      stopCamera();
+      showToast('Обробка відео та витяг ракурсів...');
+
+      const url = URL.createObjectURL(file);
+      const vid = document.createElement('video');
+      vid.muted = true;
+      vid.playsInline = true;
+      vid.preload = 'auto';
+      vid.src = url;
+
+      vid.onloadedmetadata = async () => {
+        const duration = isFinite(vid.duration) && vid.duration > 0 ? vid.duration : 4;
+        const targetFrames = 8;
+        const extracted = [];
+        const maxDim = 640;
+        const scale = Math.min(1, maxDim / Math.max(vid.videoWidth || 640, vid.videoHeight || 480));
+        const cw = Math.max(160, Math.round((vid.videoWidth || 640) * scale));
+        const ch = Math.max(120, Math.round((vid.videoHeight || 480) * scale));
+
+        for (let i = 0; i < targetFrames; i++) {
+          const t = (duration * (i + 0.5)) / targetFrames;
+          await new Promise((resolve) => {
+            const onSeeked = () => {
+              vid.removeEventListener('seeked', onSeeked);
+              const c = document.createElement('canvas');
+              c.width = cw; c.height = ch;
+              c.getContext('2d', { willReadFrequently: true }).drawImage(vid, 0, 0, cw, ch);
+              extracted.push({ id: 'vid-' + Date.now() + '-' + i, canvas: c, width: cw, height: ch, label: 'Відео #' + (i + 1) });
+              resolve();
+            };
+            vid.addEventListener('seeked', onSeeked);
+            vid.currentTime = Math.min(duration - 0.05, Math.max(0, t));
+          });
+        }
+
+        URL.revokeObjectURL(url);
+        if (extracted.length > 0) {
+          state.shots = extracted;
+          state.activeShotIndex = 0;
+          setMode('multiview', false);
+          renderShotsStrip();
+          renderCapturePreview();
+          autoThresholdCurrentShot();
+          updateCalibrationReadouts();
+          rebuild3DModel();
+          setStep('model');
+          showToast(`Готово! Створено 3D-модель з ${extracted.length} кадрів відео.`);
+        }
+      };
+
+      vid.onerror = () => {
+        URL.revokeObjectURL(url);
+        showToast('Не вдалося прочитати відеофайл. Спробуйте MP4 або зніміть з камери.');
+      };
+    }
+
+    function handleFileUpload(files) {
+      if (!files || !files.length) return;
+      stopCamera();
+      const loaded = [];
+      let pending = files.length;
+
+      Array.from(files).forEach((file, idx) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const img = new Image();
+          img.onload = () => {
+            const maxDim = 720;
+            const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+            const c = document.createElement('canvas');
+            c.width = Math.round(img.width * scale);
+            c.height = Math.round(img.height * scale);
+            c.getContext('2d', { willReadFrequently: true }).drawImage(img, 0, 0, c.width, c.height);
+            loaded.push({ id: 'file-' + Date.now() + '-' + idx, canvas: c, width: c.width, height: c.height, label: file.name.slice(0, 12) });
+            pending--;
+            if (pending === 0) {
+              if (state.shots.length === 1 && state.shots[0].id.startsWith('demo-')) state.shots = loaded;
+              else state.shots = state.shots.concat(loaded);
+              state.activeShotIndex = state.shots.length - 1;
+              if (state.shots.length >= 2) setMode('multiview', false);
+              renderShotsStrip();
+              renderCapturePreview();
+              autoThresholdCurrentShot();
+              updateCalibrationReadouts();
+              rebuild3DModel();
+              showToast('Завантажено фото: ' + loaded.length);
+            }
+          };
+          img.src = e.target.result;
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+
+    function renderShotsStrip() {
+      const strip = document.getElementById('shots-strip');
+      document.getElementById('shot-count').textContent = state.shots.length;
+      strip.innerHTML = '';
+
+      state.shots.forEach((shot, i) => {
+        const wrap = document.createElement('button');
+        const active = i === state.activeShotIndex;
+        wrap.className = 'relative shrink-0 w-16 h-14 rounded-lg overflow-hidden border-2 transition-all ' +
+          (active ? 'border-cyan-400 ring-2 ring-cyan-400/30' : 'border-slate-700 hover:border-slate-500');
+        const thumb = document.createElement('canvas');
+        thumb.width = 64; thumb.height = 56;
+        thumb.className = 'w-full h-full object-cover';
+        thumb.getContext('2d').drawImage(shot.canvas, 0, 0, 64, 56);
+        wrap.appendChild(thumb);
+
+        const badge = document.createElement('span');
+        badge.className = 'absolute bottom-0.5 right-0.5 bg-slate-950/80 text-[9px] font-mono-tech text-slate-200 px-1 rounded';
+        badge.textContent = '#' + (i + 1);
+        wrap.appendChild(badge);
+
+        wrap.addEventListener('click', () => {
+          state.activeShotIndex = i;
+          renderShotsStrip();
+          renderCapturePreview();
+          renderCalibrationCanvas();
+        });
+        strip.appendChild(wrap);
+      });
+    }
+
+    function renderCapturePreview() {
+      if (state.cameraStream) return;
+      const canvas = document.getElementById('capture-preview-canvas');
+      const shot = state.shots[state.activeShotIndex];
+      if (!shot) return;
+      canvas.width = shot.width; canvas.height = shot.height;
+      canvas.getContext('2d').drawImage(shot.canvas, 0, 0);
+    }
+
+    function extractSilhouetteMask(shot) {
+      const w = shot.width, h = shot.height;
+      const ctx = shot.canvas.getContext('2d', { willReadFrequently: true });
+      const imgData = ctx.getImageData(0, 0, w, h).data;
+      const mask = new Uint8Array(w * h);
+      const thr = state.threshold, inv = state.invertMask;
+
+      for (let i = 0; i < w * h; i++) {
+        const lum = 0.299 * imgData[i * 4] + 0.587 * imgData[i * 4 + 1] + 0.114 * imgData[i * 4 + 2];
+        mask[i] = inv ? (lum > thr ? 1 : 0) : (lum < thr ? 1 : 0);
+      }
+
+      let minX = w, maxX = 0, minY = h, maxY = 0, count = 0;
+      for (let y = 2; y < h - 2; y++) {
+        for (let x = 2; x < w - 2; x++) {
+          if (mask[y * w + x]) {
+            if (x < minX) minX = x;
+            if (x > maxX) maxX = x;
+            if (y < minY) minY = y;
+            if (y > maxY) maxY = y;
+            count++;
+          }
+        }
+      }
+
+      if (count < 50) {
+        return { mask, w, h, bbox: { minX: Math.round(w * 0.3), maxX: Math.round(w * 0.7), minY: Math.round(h * 0.2), maxY: Math.round(h * 0.8) }, valid: false };
+      }
+      return { mask, w, h, bbox: { minX, maxX, minY, maxY }, valid: true };
+    }
+
+    function autoThresholdCurrentShot() {
+      const shot = state.shots[state.activeShotIndex];
+      if (!shot) return;
+      const data = shot.canvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, shot.width, shot.height).data;
+      const hist = new Uint32Array(256);
+      const total = shot.width * shot.height;
+      for (let i = 0; i < total; i++) {
+        hist[Math.round(0.299 * data[i * 4] + 0.587 * data[i * 4 + 1] + 0.114 * data[i * 4 + 2])]++;
+      }
+      let sum = 0;
+      for (let t = 0; t < 256; t++) sum += t * hist[t];
+      let sumB = 0, wB = 0, maxVar = 0, bestT = 128;
+      for (let t = 0; t < 256; t++) {
+        wB += hist[t];
+        if (wB === 0) continue;
+        const wF = total - wB;
+        if (wF === 0) break;
+        sumB += t * hist[t];
+        const mB = sumB / wB;
+        const mF = (sum - sumB) / wF;
+        const v = wB * wF * (mB - mF) * (mB - mF);
+        if (v > maxVar) { maxVar = v; bestT = t; }
+      }
+      state.threshold = clamp(bestT, 30, 225);
+      document.getElementById('slider-threshold').value = state.threshold;
+      document.getElementById('val-threshold').textContent = state.threshold;
+    }
+
+    function getCalTransform(canvas, shot) {
+      const cw = canvas.width, ch = canvas.height;
+      const scale = Math.min(cw / shot.width, ch / shot.height);
+      const dw = shot.width * scale, dh = shot.height * scale;
+      return { scale, dw, dh, ox: (cw - dw) / 2, oy: (ch - dh) / 2 };
+    }
+
+    function updateCalibrationReadouts() {
+      const shot = state.shots[state.activeShotIndex];
+      if (!shot) return;
+      const dx = (state.pinB.x - state.pinA.x) * shot.width;
+      const dy = (state.pinB.y - state.pinA.y) * shot.height;
+      const abPx = Math.max(4, Math.hypot(dx, dy));
+      state.mmPerPx = state.refLengthMm / abPx;
+
+      document.getElementById('mm-per-px-badge').textContent = state.mmPerPx.toFixed(3) + ' мм/px';
+      document.getElementById('cal-ab-px').textContent = Math.round(abPx) + ' px';
+
+      const seg = extractSilhouetteMask(shot);
+      document.getElementById('cal-dim-x').textContent = ((seg.bbox.maxX - seg.bbox.minX) * state.mmPerPx).toFixed(1) + ' мм';
+      document.getElementById('cal-dim-z').textContent = ((seg.bbox.maxY - seg.bbox.minY) * state.mmPerPx).toFixed(1) + ' мм';
+    }
+
+    function renderCalibrationCanvas() {
+      const canvas = document.getElementById('calibrate-canvas');
+      const parent = canvas.parentElement;
+      const shot = state.shots[state.activeShotIndex];
+      if (!shot || !parent) return;
+
+      const rect = parent.getBoundingClientRect();
+      if (rect.width < 10 || rect.height < 10) return;
+      canvas.width = Math.round(rect.width);
+      canvas.height = Math.round(rect.height);
+
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      const tf = getCalTransform(canvas, shot);
+      ctx.drawImage(shot.canvas, tf.ox, tf.oy, tf.dw, tf.dh);
+
+      const seg = extractSilhouetteMask(shot);
+
+      if (state.showMask) {
+        const maskCanvas = document.createElement('canvas');
+        maskCanvas.width = shot.width; maskCanvas.height = shot.height;
+        const mctx = maskCanvas.getContext('2d');
+        const mImg = mctx.createImageData(shot.width, shot.height);
+        for (let i = 0; i < seg.mask.length; i++) {
+          if (seg.mask[i]) {
+            mImg.data[i * 4] = 34; mImg.data[i * 4 + 1] = 211; mImg.data[i * 4 + 2] = 238; mImg.data[i * 4 + 3] = 110;
+          }
+        }
+        mctx.putImageData(mImg, 0, 0);
+        ctx.drawImage(maskCanvas, tf.ox, tf.oy, tf.dw, tf.dh);
+
+        ctx.strokeStyle = '#22d3ee';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([5, 4]);
+        ctx.strokeRect(
+          tf.ox + seg.bbox.minX * tf.scale,
+          tf.oy + seg.bbox.minY * tf.scale,
+          (seg.bbox.maxX - seg.bbox.minX) * tf.scale,
+          (seg.bbox.maxY - seg.bbox.minY) * tf.scale
+        );
+        ctx.setLineDash([]);
+      }
+
+      const ax = tf.ox + state.pinA.x * tf.dw, ay = tf.oy + state.pinA.y * tf.dh;
+      const bx = tf.ox + state.pinB.x * tf.dw, by = tf.oy + state.pinB.y * tf.dh;
+
+      ctx.strokeStyle = '#f59e0b';
+      ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
+
+      const mx = (ax + bx) / 2, my = (ay + by) / 2 - 14;
+      const labelText = state.refLengthMm.toFixed(1) + ' мм';
+      ctx.font = '600 12px "JetBrains Mono", monospace';
+      const tw = ctx.measureText(labelText).width + 14;
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
+      ctx.beginPath(); ctx.roundRect(mx - tw / 2, my - 11, tw, 22, 6); ctx.fill();
+      ctx.strokeStyle = '#f59e0b'; ctx.lineWidth = 1; ctx.stroke();
+      ctx.fillStyle = '#fcd34d'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(labelText, mx, my);
+
+      [{ x: ax, y: ay, tag: 'A' }, { x: bx, y: by, tag: 'B' }].forEach(p => {
+        ctx.fillStyle = '#f59e0b';
+        ctx.beginPath(); ctx.arc(p.x, p.y, 12, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#0f172a'; ctx.lineWidth = 2.5; ctx.stroke();
+        ctx.fillStyle = '#0f172a'; ctx.font = '700 11px Inter, sans-serif';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(p.tag, p.x, p.y + 0.5);
+      });
+
+      updateCalibrationReadouts();
+    }
+
+    function setupCalibrationEvents() {
+      const canvas = document.getElementById('calibrate-canvas');
+      function getPointerPos(e) {
+        const rect = canvas.getBoundingClientRect();
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        return { x: clientX - rect.left, y: clientY - rect.top };
+      }
+      function onDown(e) {
+        const shot = state.shots[state.activeShotIndex];
+        if (!shot) return;
+        const pos = getPointerPos(e);
+        const tf = getCalTransform(canvas, shot);
+        const ax = tf.ox + state.pinA.x * tf.dw, ay = tf.oy + state.pinA.y * tf.dh;
+        const bx = tf.ox + state.pinB.x * tf.dw, by = tf.oy + state.pinB.y * tf.dh;
+
+        if (Math.hypot(pos.x - ax, pos.y - ay) < 24) state.draggingPin = 'A';
+        else if (Math.hypot(pos.x - bx, pos.y - by) < 24) state.draggingPin = 'B';
+        else {
+          state.draggingPin = Math.hypot(pos.x - ax, pos.y - ay) < Math.hypot(pos.x - bx, pos.y - by) ? 'A' : 'B';
+          onMove(e);
+        }
+      }
+      function onMove(e) {
+        if (!state.draggingPin) return;
+        const shot = state.shots[state.activeShotIndex];
+        if (!shot) return;
+        e.preventDefault();
+        const pos = getPointerPos(e);
+        const tf = getCalTransform(canvas, shot);
+        const nx = clamp((pos.x - tf.ox) / tf.dw, 0.02, 0.98);
+        const ny = clamp((pos.y - tf.oy) / tf.dh, 0.02, 0.98);
+        if (state.draggingPin === 'A') state.pinA = { x: nx, y: ny };
+        else state.pinB = { x: nx, y: ny };
+        renderCalibrationCanvas();
+      }
+      function onUp() { state.draggingPin = null; }
+
+      canvas.addEventListener('mousedown', onDown);
+      window.addEventListener('mousemove', onMove);
+      window.addEventListener('mouseup', onUp);
+      canvas.addEventListener('touchstart', onDown, { passive: false });
+      window.addEventListener('touchmove', onMove, { passive: false });
+      window.addEventListener('touchend', onUp);
+    }
+
+    function updateRefPresetHighlight() {
+      document.querySelectorAll('.ref-preset-btn').forEach(btn => {
+        const active = Math.abs(parseFloat(btn.dataset.ref) - state.refLengthMm) < 0.05;
+        btn.className = active
+          ? 'ref-preset-btn px-2.5 py-2 rounded-xl border text-left transition-all bg-amber-500/15 border-amber-400/70'
+          : 'ref-preset-btn px-2.5 py-2 rounded-xl border text-left transition-all bg-slate-950/60 border-slate-800 hover:border-slate-700';
+      });
+    }
+
+    function smoothArray(arr, passes) {
+      let cur = arr.slice();
+      for (let p = 0; p < passes; p++) {
+        const next = cur.slice();
+        for (let i = 1; i < cur.length - 1; i++) next[i] = (cur[i - 1] + cur[i] * 2 + cur[i + 1]) / 4;
+        cur = next;
+      }
+      return cur;
+    }
+
+    function buildLatheGeometry(seg) {
+      const { mask, w, bbox } = seg;
+      const mm = state.mmPerPx;
+      const rows = Math.max(24, Math.min(96, state.meshRes));
+      const heightPx = Math.max(10, bbox.maxY - bbox.minY);
+
+      const radii = [];
+      for (let i = 0; i <= rows; i++) {
+        const py = Math.round(bbox.maxY - (i / rows) * heightPx);
+        let left = w, right = 0;
+        for (let x = bbox.minX; x <= bbox.maxX; x++) {
+          if (mask[py * w + x]) { if (x < left) left = x; if (x > right) right = x; }
+        }
+        radii.push(Math.max(1.2, ((right >= left ? right - left : 4) / 2) * mm));
+      }
+
+      const smoothed = smoothArray(radii, state.smooth);
+      const totalH = heightPx * mm;
+      const pts = [new THREE.Vector2(0.01, 0)];
+      for (let i = 0; i <= rows; i++) pts.push(new THREE.Vector2(smoothed[i], (i / rows) * totalH));
+      pts.push(new THREE.Vector2(0.01, totalH));
+
+      const geo = new THREE.LatheGeometry(pts, state.meshRes);
+      geo.computeVertexNormals();
+      return geo;
+    }
+
+    function buildExtrudeGeometry(seg) {
+      const { mask, w, bbox } = seg;
+      const mm = state.mmPerPx;
+      const slices = Math.max(24, Math.min(80, state.meshRes));
+      const heightPx = Math.max(10, bbox.maxY - bbox.minY);
+      const centerX = (bbox.minX + bbox.maxX) / 2;
+
+      const leftPts = [], rightPts = [];
+      for (let i = 0; i <= slices; i++) {
+        const py = Math.round(bbox.maxY - (i / slices) * heightPx);
+        let left = w, right = 0;
+        for (let x = bbox.minX; x <= bbox.maxX; x++) {
+          if (mask[py * w + x]) { if (x < left) left = x; if (x > right) right = x; }
+        }
+        leftPts.push(right > left ? (left - centerX) * mm : -2);
+        rightPts.push(right > left ? (right - centerX) * mm : 2);
+      }
+
+      const sLeft = smoothArray(leftPts, state.smooth);
+      const sRight = smoothArray(rightPts, state.smooth);
+      const totalH = heightPx * mm;
+
+      const shape = new THREE.Shape();
+      for (let i = 0; i <= slices; i++) {
+        const y = (i / slices) * totalH;
+        if (i === 0) shape.moveTo(sLeft[i], y);
+        else shape.lineTo(sLeft[i], y);
+      }
+      for (let i = slices; i >= 0; i--) shape.lineTo(sRight[i], (i / slices) * totalH);
+      shape.closePath();
+
+      const depth = state.extrudeDepthMm;
+      const geo = new THREE.ExtrudeGeometry(shape, {
+        depth, bevelEnabled: true,
+        bevelThickness: Math.min(1.2, depth * 0.12),
+        bevelSize: Math.min(1.0, depth * 0.1),
+        bevelSegments: 2
+      });
+      geo.rotateX(-Math.PI / 2);
+      geo.computeBoundingBox();
+      const bb = geo.boundingBox;
+      geo.translate(-(bb.min.x + bb.max.x) / 2, -bb.min.y, -(bb.min.z + bb.max.z) / 2);
+      geo.computeVertexNormals();
+      return geo;
+    }
+
+    function buildMultiviewGeometry() {
+      const segs = state.shots.map(s => extractSilhouetteMask(s));
+      const numViews = segs.length;
+      const mm = state.mmPerPx;
+      const rows = Math.max(24, Math.min(72, state.meshRes));
+      const radialSegs = state.meshRes;
+
+      const primary = segs[0];
+      const totalH = Math.max(10, primary.bbox.maxY - primary.bbox.minY) * mm;
+
+      const viewProfiles = segs.map(seg => {
+        const prof = [];
+        const vh = Math.max(10, seg.bbox.maxY - seg.bbox.minY);
+        for (let i = 0; i <= rows; i++) {
+          const py = Math.round(seg.bbox.maxY - (i / rows) * vh);
+          let l = seg.w, r = 0;
+          for (let x = seg.bbox.minX; x <= seg.bbox.maxX; x++) {
+            if (seg.mask[py * seg.w + x]) { if (x < l) l = x; if (x > r) r = x; }
+          }
+          prof.push(Math.max(1.5, ((r > l ? r - l : 6) / 2) * mm));
+        }
+        return smoothArray(prof, state.smooth);
+      });
+
+      const positions = [], indices = [];
+      for (let i = 0; i <= rows; i++) {
+        const y = (i / rows) * totalH;
+        for (let j = 0; j < radialSegs; j++) {
+          const ang = (j / radialSegs) * Math.PI * 2;
+          let radius;
+          if (numViews === 1) {
+            radius = viewProfiles[0][i];
+          } else {
+            const viewPos = ((ang / (Math.PI * 2)) * numViews) % numViews;
+            const idx0 = Math.floor(viewPos);
+            const idx1 = (idx0 + 1) % numViews;
+            const t = viewPos - idx0;
+            const smoothT = 0.5 - 0.5 * Math.cos(t * Math.PI);
+            radius = viewProfiles[idx0][i] * (1 - smoothT) + viewProfiles[idx1][i] * smoothT;
+          }
+          positions.push(Math.cos(ang) * radius, y, Math.sin(ang) * radius);
+        }
+      }
+
+      for (let i = 0; i < rows; i++) {
+        for (let j = 0; j < radialSegs; j++) {
+          const nextJ = (j + 1) % radialSegs;
+          const a = i * radialSegs + j, b = i * radialSegs + nextJ;
+          const c = (i + 1) * radialSegs + nextJ, d = (i + 1) * radialSegs + j;
+          indices.push(a, d, b);
+          indices.push(b, d, c);
+        }
+      }
+
+      const botCenterIdx = positions.length / 3;
+      positions.push(0, 0, 0);
+      const topCenterIdx = positions.length / 3;
+      positions.push(0, totalH, 0);
+
+      for (let j = 0; j < radialSegs; j++) {
+        const nextJ = (j + 1) % radialSegs;
+        indices.push(botCenterIdx, j, nextJ);
+        const topStart = rows * radialSegs;
+        indices.push(topCenterIdx, topStart + nextJ, topStart + j);
+      }
+
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+      geo.setIndex(indices);
+      geo.computeVertexNormals();
+      return geo;
+    }
+
+    function computeSignedVolumeMm3(geometry) {
+      const geo = geometry.index ? geometry.toNonIndexed() : geometry;
+      const pos = geo.attributes.position;
+      let vol = 0;
+      const v0 = new THREE.Vector3(), v1 = new THREE.Vector3(), v2 = new THREE.Vector3(), cross = new THREE.Vector3();
+      for (let i = 0; i < pos.count; i += 3) {
+        v0.fromBufferAttribute(pos, i);
+        v1.fromBufferAttribute(pos, i + 1);
+        v2.fromBufferAttribute(pos, i + 2);
+        cross.crossVectors(v1, v2);
+        vol += v0.dot(cross) / 6.0;
+      }
+      return Math.abs(vol);
+    }
+
+    function rebuild3DModel() {
+      if (!state.scene) return;
+      const shot = state.shots[state.activeShotIndex];
+      if (!shot) return;
+
+      updateCalibrationReadouts();
+      const seg = extractSilhouetteMask(shot);
+
+      let geo;
+      if (state.mode === 'lathe') geo = buildLatheGeometry(seg);
+      else if (state.mode === 'extrude') geo = buildExtrudeGeometry(seg);
+      else geo = buildMultiviewGeometry();
+
+      geo.computeBoundingBox();
+      const bb = geo.boundingBox;
+      geo.translate(-(bb.min.x + bb.max.x) / 2, -bb.min.y, -(bb.min.z + bb.max.z) / 2);
+      geo.computeBoundingBox();
+
+      const size = new THREE.Vector3();
+      geo.boundingBox.getSize(size);
+      state.baseDimsMm = { x: Math.max(1, size.x), y: Math.max(1, size.z), z: Math.max(1, size.y) };
+      state.currentDimsMm = { ...state.baseDimsMm };
+
+      if (state.activeMesh) {
+        state.meshGroup.remove(state.activeMesh);
+        state.activeMesh.geometry.dispose();
+        state.activeMesh.material.dispose();
+      }
+
+      const mat = new THREE.MeshStandardMaterial({
+        color: 0x38bdf8, roughness: 0.36, metalness: 0.14,
+        wireframe: state.showWireframe, side: THREE.DoubleSide
+      });
+
+      state.activeMesh = new THREE.Mesh(geo, mat);
+      state.activeMesh.castShadow = true;
+      state.activeMesh.receiveShadow = true;
+      state.meshGroup.add(state.activeMesh);
+
+      state.orbit.targetY = Math.max(18, state.currentDimsMm.z * 0.48);
+      state.orbit.radius = clamp(Math.max(state.currentDimsMm.x, state.currentDimsMm.y, state.currentDimsMm.z) * 2.2, 110, 420);
+      updateThreeCamera();
+      syncDimensionInputsAndStats();
+    }
+
+    function applyUserDimensions() {
+      if (!state.activeMesh) return;
+      state.activeMesh.scale.set(
+        state.currentDimsMm.x / state.baseDimsMm.x,
+        state.currentDimsMm.z / state.baseDimsMm.z,
+        state.currentDimsMm.y / state.baseDimsMm.y
+      );
+      syncDimensionInputsAndStats();
+    }
+
+    function syncDimensionInputsAndStats() {
+      const dx = state.currentDimsMm.x, dy = state.currentDimsMm.y, dz = state.currentDimsMm.z;
+      document.getElementById('dim-input-x').value = dx.toFixed(1);
+      document.getElementById('dim-input-y').value = dy.toFixed(1);
+      document.getElementById('dim-input-z').value = dz.toFixed(1);
+      document.getElementById('hud-x').textContent = dx.toFixed(1);
+      document.getElementById('hud-y').textContent = dy.toFixed(1);
+      document.getElementById('hud-z').textContent = dz.toFixed(1);
+
+      const fits = dx <= 220 && dy <= 220 && dz <= 250;
+      const badge = document.getElementById('bed-fit-badge');
+      badge.textContent = fits ? 'Вміщується на стіл' : 'Перевищує 220×220 мм';
+      badge.className = fits
+        ? 'text-[11px] font-medium px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
+        : 'text-[11px] font-medium px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30';
+
+      if (state.activeMesh) {
+        const geo = state.activeMesh.geometry;
+        const tris = geo.index ? geo.index.count / 3 : geo.attributes.position.count / 3;
+        const scaleVolFactor = (dx / state.baseDimsMm.x) * (dy / state.baseDimsMm.y) * (dz / state.baseDimsMm.z);
+        const volCm3 = (computeSignedVolumeMm3(geo) * scaleVolFactor) / 1000.0;
+        const weightG = volCm3 * Math.min(1, 0.25 + 0.75 * (state.infillPct / 100)) * 1.24;
+
+        document.getElementById('stat-volume').textContent = volCm3.toFixed(1) + ' см³';
+        document.getElementById('stat-weight').textContent = weightG.toFixed(1) + ' г';
+        document.getElementById('stat-tris').textContent = Math.round(tris).toLocaleString('uk-UA');
+      }
+    }
+
+    function initThree() {
+      const container = document.getElementById('three-container');
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x090d16);
+
+      const camera = new THREE.PerspectiveCamera(42, 1.4, 1, 2000);
+      const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      renderer.shadowMap.enabled = true;
+      container.appendChild(renderer.domElement);
+
+      scene.add(new THREE.HemisphereLight(0xe0f2fe, 0x0f172a, 0.85));
+      const keyLight = new THREE.DirectionalLight(0xffffff, 0.95);
+      keyLight.position.set(140, 220, 160); keyLight.castShadow = true;
+      scene.add(keyLight);
+      const rimLight = new THREE.DirectionalLight(0x22d3ee, 0.45);
+      rimLight.position.set(-150, 90, -140);
+      scene.add(rimLight);
+
+      const bedGroup = new THREE.Group();
+      const bedPlate = new THREE.Mesh(
+        new THREE.BoxGeometry(220, 2, 220),
+        new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.85, metalness: 0.2 })
+      );
+      bedPlate.position.y = -1.1; bedPlate.receiveShadow = true;
+      bedGroup.add(bedPlate);
+
+      const grid = new THREE.GridHelper(220, 22, 0x22d3ee, 0x1e293b);
+      grid.position.y = 0.05;
+      bedGroup.add(grid);
+
+      const border = new THREE.LineSegments(
+        new THREE.EdgesGeometry(new THREE.BoxGeometry(220, 0.4, 220)),
+        new THREE.LineBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.45 })
+      );
+      border.position.y = 0.2;
+      bedGroup.add(border);
+      scene.add(bedGroup);
+
+      const meshGroup = new THREE.Group();
+      scene.add(meshGroup);
+
+      state.scene = scene; state.camera = camera; state.renderer = renderer;
+      state.bedGroup = bedGroup; state.meshGroup = meshGroup;
+
+      setupOrbitEvents(renderer.domElement);
+      resizeThree();
+      (function animate() { requestAnimationFrame(animate); renderer.render(scene, camera); })();
+    }
+
+    function updateThreeCamera() {
+      if (!state.camera) return;
+      const o = state.orbit;
+      state.camera.position.set(
+        o.radius * Math.sin(o.phi) * Math.sin(o.theta),
+        o.targetY + o.radius * Math.cos(o.phi),
+        o.radius * Math.sin(o.phi) * Math.cos(o.theta)
+      );
+      state.camera.lookAt(0, o.targetY, 0);
+    }
+
+    function resizeThree() {
+      const container = document.getElementById('three-container');
+      if (!container || !state.renderer || !state.camera) return;
+      const w = container.clientWidth || 640, h = container.clientHeight || 480;
+      state.camera.aspect = w / h;
+      state.camera.updateProjectionMatrix();
+      state.renderer.setSize(w, h);
+    }
+
+    function setupOrbitEvents(dom) {
+      dom.addEventListener('mousedown', (e) => {
+        state.orbit.isDragging = true; state.orbit.lastX = e.clientX; state.orbit.lastY = e.clientY;
+      });
+      window.addEventListener('mousemove', (e) => {
+        if (!state.orbit.isDragging) return;
+        const dx = e.clientX - state.orbit.lastX, dy = e.clientY - state.orbit.lastY;
+        state.orbit.lastX = e.clientX; state.orbit.lastY = e.clientY;
+        state.orbit.theta -= dx * 0.008;
+        state.orbit.phi = clamp(state.orbit.phi - dy * 0.008, 0.15, Math.PI / 2 - 0.03);
+        updateThreeCamera();
+      });
+      window.addEventListener('mouseup', () => { state.orbit.isDragging = false; });
+
+      dom.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        state.orbit.radius = clamp(state.orbit.radius + e.deltaY * 0.25, 65, 620);
+        updateThreeCamera();
+      }, { passive: false });
+
+      dom.addEventListener('touchstart', (e) => {
+        if (e.touches.length === 1) {
+          state.orbit.isDragging = true; state.orbit.lastX = e.touches[0].clientX; state.orbit.lastY = e.touches[0].clientY;
+        } else if (e.touches.length === 2) {
+          state.orbit.isDragging = false;
+          state.orbit.pinchDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+        }
+      }, { passive: true });
+
+      dom.addEventListener('touchmove', (e) => {
+        if (e.touches.length === 1 && state.orbit.isDragging) {
+          e.preventDefault();
+          const dx = e.touches[0].clientX - state.orbit.lastX, dy = e.touches[0].clientY - state.orbit.lastY;
+          state.orbit.lastX = e.touches[0].clientX; state.orbit.lastY = e.touches[0].clientY;
+          state.orbit.theta -= dx * 0.01;
+          state.orbit.phi = clamp(state.orbit.phi - dy * 0.01, 0.15, Math.PI / 2 - 0.03);
+          updateThreeCamera();
+        } else if (e.touches.length === 2) {
+          e.preventDefault();
+          const dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+          const delta = state.orbit.pinchDist - dist;
+          state.orbit.pinchDist = dist;
+          state.orbit.radius = clamp(state.orbit.radius + delta * 0.9, 65, 620);
+          updateThreeCamera();
+        }
+      }, { passive: false });
+
+      dom.addEventListener('touchend', () => { state.orbit.isDragging = false; });
+    }
+
+    function getExportWorldGeometry() {
+      if (!state.activeMesh) return null;
+      state.activeMesh.updateMatrixWorld(true);
+      const cloned = state.activeMesh.geometry.clone();
+      cloned.applyMatrix4(state.activeMesh.matrixWorld);
+      cloned.rotateX(Math.PI / 2);
+      cloned.computeBoundingBox();
+      const bb = cloned.boundingBox;
+      cloned.translate(-(bb.min.x + bb.max.x) / 2, -(bb.min.y + bb.max.y) / 2, -bb.min.z);
+      return cloned.index ? cloned.toNonIndexed() : cloned;
+    }
+
+    function exportBinarySTL() {
+      const geo = getExportWorldGeometry();
+      if (!geo) { showToast('Спочатку побудуйте 3D-модель'); return; }
+      const pos = geo.attributes.position;
+      const triCount = pos.count / 3;
+      const bufferLen = 84 + triCount * 50;
+      const buffer = new ArrayBuffer(bufferLen);
+      const view = new DataView(buffer);
+
+      const header = 'Scan3D Print Real-Scale Millimeters (1:1)';
+      for (let i = 0; i < header.length && i < 80; i++) view.setUint8(i, header.charCodeAt(i));
+      view.setUint32(80, triCount, true);
+
+      const vA = new THREE.Vector3(), vB = new THREE.Vector3(), vC = new THREE.Vector3();
+      const cb = new THREE.Vector3(), ab = new THREE.Vector3();
+      let offset = 84;
+
+      for (let i = 0; i < pos.count; i += 3) {
+        vA.fromBufferAttribute(pos, i); vB.fromBufferAttribute(pos, i + 1); vC.fromBufferAttribute(pos, i + 2);
+        cb.subVectors(vC, vB); ab.subVectors(vA, vB); cb.cross(ab).normalize();
+
+        view.setFloat32(offset, cb.x, true); offset += 4;
+        view.setFloat32(offset, cb.y, true); offset += 4;
+        view.setFloat32(offset, cb.z, true); offset += 4;
+        view.setFloat32(offset, vA.x, true); offset += 4;
+        view.setFloat32(offset, vA.y, true); offset += 4;
+        view.setFloat32(offset, vA.z, true); offset += 4;
+        view.setFloat32(offset, vB.x, true); offset += 4;
+        view.setFloat32(offset, vB.y, true); offset += 4;
+        view.setFloat32(offset, vB.z, true); offset += 4;
+        view.setFloat32(offset, vC.x, true); offset += 4;
+        view.setFloat32(offset, vC.y, true); offset += 4;
+        view.setFloat32(offset, vC.z, true); offset += 4;
+        view.setUint16(offset, 0, true); offset += 2;
+      }
+
+      geo.dispose();
+      const blob = new Blob([buffer], { type: 'application/octet-stream' });
+      const dimTag = `${Math.round(state.currentDimsMm.x)}x${Math.round(state.currentDimsMm.y)}x${Math.round(state.currentDimsMm.z)}mm`;
+      triggerDownload(blob, `scan3d_${dimTag}.stl`);
+      showToast(`Експортовано STL (${dimTag}, ${(bufferLen / 1024).toFixed(0)} КБ)`);
+    }
+
+    function exportOBJ() {
+      const geo = getExportWorldGeometry();
+      if (!geo) { showToast('Спочатку побудуйте 3D-модель'); return; }
+      const pos = geo.attributes.position;
+      const lines = ['# Scan3D Print - Real Scale Millimeters (1:1)', 'o ScannedObject'];
+      for (let i = 0; i < pos.count; i++) lines.push(`v ${pos.getX(i).toFixed(3)} ${pos.getY(i).toFixed(3)} ${pos.getZ(i).toFixed(3)}`);
+      for (let i = 0; i < pos.count; i += 3) lines.push(`f ${i + 1} ${i + 2} ${i + 3}`);
+      geo.dispose();
+      const blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' });
+      const dimTag = `${Math.round(state.currentDimsMm.x)}x${Math.round(state.currentDimsMm.y)}x${Math.round(state.currentDimsMm.z)}mm`;
+      triggerDownload(blob, `scan3d_${dimTag}.obj`);
+      showToast(`Експортовано OBJ (${dimTag})`);
+    }
+
+    function triggerDownload(blob, filename) {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = filename;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+
+    function bindEvents() {
+      document.querySelectorAll('.step-tab').forEach(btn => btn.addEventListener('click', () => setStep(btn.dataset.step)));
+      document.querySelectorAll('.mode-btn').forEach(btn => btn.addEventListener('click', () => setMode(btn.dataset.mode, true)));
+
+      document.getElementById('btn-start-camera').addEventListener('click', startCamera);
+      document.getElementById('btn-snap-photo').addEventListener('click', snapFromCamera);
+      document.getElementById('btn-video-scan').addEventListener('click', toggleVideoScan);
+
+      document.getElementById('overlay-btn-photo').addEventListener('click', snapFromCamera);
+      document.getElementById('overlay-btn-video').addEventListener('click', toggleVideoScan);
+      document.getElementById('overlay-btn-flip').addEventListener('click', () => {
+        state.facingMode = state.facingMode === 'environment' ? 'user' : 'environment';
+        if (state.cameraStream) { stopCamera(); startCamera(); }
+      });
+      document.getElementById('overlay-btn-done').addEventListener('click', () => {
+        if (state.isVideoScanning) stopVideoScan(true);
+        else { stopCamera(); setStep('calibrate'); }
+      });
+
+      document.getElementById('input-upload-photo').addEventListener('change', (e) => {
+        handleFileUpload(e.target.files); e.target.value = '';
+      });
+      document.getElementById('input-upload-video').addEventListener('change', (e) => {
+        if (e.target.files && e.target.files[0]) handleVideoFileUpload(e.target.files[0]);
+        e.target.value = '';
+      });
+      document.getElementById('btn-clear-shots').addEventListener('click', () => loadDemo('vase'));
+      document.querySelectorAll('.demo-btn').forEach(btn => btn.addEventListener('click', () => loadDemo(btn.dataset.demo)));
+
+      document.getElementById('btn-next-to-calibrate').addEventListener('click', () => { stopCamera(); setStep('calibrate'); });
+      document.getElementById('btn-build-3d').addEventListener('click', () => {
+        rebuild3DModel(); setStep('model'); showToast('3D-модель оновлено в масштабі 1:1');
+      });
+      document.getElementById('btn-switch-step-quick').addEventListener('click', () => {
+        if (state.step === 'model') setStep('capture');
+        else if (state.step === 'capture') setStep('model');
+        else { rebuild3DModel(); setStep('model'); }
+      });
+
+      document.querySelectorAll('.ref-preset-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          state.refLengthMm = parseFloat(btn.dataset.ref);
+          document.getElementById('input-ref-mm').value = state.refLengthMm;
+          updateRefPresetHighlight();
+          renderCalibrationCanvas();
+        });
+      });
+      document.getElementById('input-ref-mm').addEventListener('input', (e) => {
+        const val = parseFloat(e.target.value);
+        if (val > 0) { state.refLengthMm = val; updateRefPresetHighlight(); renderCalibrationCanvas(); }
+      });
+      document.getElementById('btn-reset-pins').addEventListener('click', () => {
+        state.pinA = { x: 0.14, y: 0.84 }; state.pinB = { x: 0.44, y: 0.84 }; renderCalibrationCanvas();
+      });
+
+      document.getElementById('slider-threshold').addEventListener('input', (e) => {
+        state.threshold = parseInt(e.target.value, 10);
+        document.getElementById('val-threshold').textContent = state.threshold;
+        renderCalibrationCanvas();
+      });
+      document.getElementById('slider-smooth').addEventListener('input', (e) => {
+        state.smooth = parseInt(e.target.value, 10);
+        document.getElementById('val-smooth').textContent = state.smooth;
+      });
+      document.getElementById('toggle-invert-mask').addEventListener('change', (e) => {
+        state.invertMask = e.target.checked; renderCalibrationCanvas();
+      });
+      document.getElementById('toggle-show-mask').addEventListener('change', (e) => {
+        state.showMask = e.target.checked; renderCalibrationCanvas();
+      });
+      document.getElementById('btn-auto-threshold').addEventListener('click', () => {
+        autoThresholdCurrentShot(); renderCalibrationCanvas(); showToast('Автоматично підібрано поріг: ' + state.threshold);
+      });
+
+      ['x', 'y', 'z'].forEach(axis => {
+        document.getElementById('dim-input-' + axis).addEventListener('change', (e) => {
+          const val = clamp(parseFloat(e.target.value) || 10, 2, 400);
+          if (state.lockRatio) {
+            const ratio = val / state.currentDimsMm[axis];
+            state.currentDimsMm.x = clamp(state.currentDimsMm.x * ratio, 2, 400);
+            state.currentDimsMm.y = clamp(state.currentDimsMm.y * ratio, 2, 400);
+            state.currentDimsMm.z = clamp(state.currentDimsMm.z * ratio, 2, 400);
+          } else state.currentDimsMm[axis] = val;
+          applyUserDimensions();
+        });
+      });
+
+      document.getElementById('toggle-lock-ratio').addEventListener('change', (e) => { state.lockRatio = e.target.checked; });
+      document.getElementById('btn-reset-scale').addEventListener('click', () => {
+        state.currentDimsMm = { ...state.baseDimsMm }; applyUserDimensions(); showToast('Відновлено відкалібрований масштаб 1:1');
+      });
+
+      document.getElementById('slider-mesh-res').addEventListener('input', (e) => {
+        state.meshRes = parseInt(e.target.value, 10);
+        document.getElementById('val-mesh-res').textContent = state.meshRes;
+        rebuild3DModel();
+      });
+      document.getElementById('slider-extrude-mm').addEventListener('input', (e) => {
+        state.extrudeDepthMm = parseInt(e.target.value, 10);
+        document.getElementById('val-extrude-mm').textContent = state.extrudeDepthMm + ' мм';
+        rebuild3DModel();
+      });
+      document.getElementById('slider-infill').addEventListener('input', (e) => {
+        state.infillPct = parseInt(e.target.value, 10);
+        document.getElementById('val-infill').textContent = state.infillPct + '%';
+        syncDimensionInputsAndStats();
+      });
+
+      document.getElementById('btn-toggle-wireframe').addEventListener('click', (e) => {
+        state.showWireframe = !state.showWireframe;
+        if (state.activeMesh) state.activeMesh.material.wireframe = state.showWireframe;
+        e.currentTarget.className = state.showWireframe
+          ? 'px-2.5 py-1 rounded-lg bg-cyan-500/20 text-[11px] text-cyan-300 border border-cyan-500/40 transition-colors'
+          : 'px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-[11px] text-slate-300 border border-slate-700 transition-colors';
+      });
+      document.getElementById('btn-toggle-bed').addEventListener('click', (e) => {
+        state.showBed = !state.showBed;
+        if (state.bedGroup) state.bedGroup.visible = state.showBed;
+        e.currentTarget.className = state.showBed
+          ? 'px-2.5 py-1 rounded-lg bg-cyan-500/20 text-[11px] text-cyan-300 border border-cyan-500/40 transition-colors'
+          : 'px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-[11px] text-slate-300 border border-slate-700 transition-colors';
+      });
+      document.getElementById('btn-reset-camera').addEventListener('click', () => {
+        state.orbit.theta = 0.68; state.orbit.phi = 1.08; state.orbit.radius = 240; updateThreeCamera();
+      });
+
+      document.getElementById('btn-export-stl').addEventListener('click', exportBinarySTL);
+      document.getElementById('header-export-stl').addEventListener('click', exportBinarySTL);
+      document.getElementById('btn-export-obj').addEventListener('click', exportOBJ);
+
+      window.addEventListener('resize', () => {
+        resizeThree();
+        if (state.step === 'calibrate') renderCalibrationCanvas();
+      });
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      if (window.lucide) window.lucide.createIcons();
+      initThree();
+      bindEvents();
+      setupCalibrationEvents();
+      loadDemo('vase');
+      setStep('capture');
+    });
+  </script>
+</body>
+</html>
